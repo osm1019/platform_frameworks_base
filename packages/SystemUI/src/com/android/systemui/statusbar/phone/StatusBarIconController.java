@@ -18,6 +18,7 @@ import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_BLUE
 import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_ICON;
 import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_MOBILE;
 import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_MOBILE_NEW;
+import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_NETWORK_TRAFFIC;
 import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_WIFI;
 import static com.android.systemui.statusbar.phone.StatusBarIconHolder.TYPE_WIFI_NEW;
 
@@ -60,7 +61,7 @@ import com.android.systemui.statusbar.pipeline.mobile.ui.viewmodel.MobileIconsVi
 import com.android.systemui.statusbar.pipeline.wifi.ui.WifiUiAdapter;
 import com.android.systemui.statusbar.pipeline.wifi.ui.view.ModernStatusBarWifiView;
 import com.android.systemui.statusbar.pipeline.wifi.ui.viewmodel.LocationBasedWifiViewModel;
-import com.android.systemui.util.Assert;
+import com.android.systemui.statusbar.policy.NetworkTrafficSB;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,9 +80,6 @@ public interface StatusBarIconController {
     void addIconGroup(IconManager iconManager);
     /** */
     void removeIconGroup(IconManager iconManager);
-
-    /** Refresh the state of an IconManager by recreating the views */
-    void refreshIconGroup(IconManager iconManager);
 
     /**
      * Adds or updates an icon for a given slot for a **tile service icon**.
@@ -390,7 +388,6 @@ public interface StatusBarIconController {
         protected final int mIconSize;
         // Whether or not these icons show up in dumpsys
         protected boolean mShouldLog = false;
-        private StatusBarIconController mController;
         private final StatusBarLocation mLocation;
 
         // Enables SystemUI demo mode to take effect in this group
@@ -442,17 +439,13 @@ public interface StatusBarIconController {
             mDemoable = demoable;
         }
 
-        void setController(StatusBarIconController controller) {
-            mController = controller;
-        }
-
         public void setBlockList(@Nullable List<String> blockList) {
-            Assert.isMainThread();
             mBlockList.clear();
-            mBlockList.addAll(blockList);
-            if (mController != null) {
-                mController.refreshIconGroup(this);
+            if (blockList == null || blockList.isEmpty()) {
+                return;
             }
+
+            mBlockList.addAll(blockList);
         }
 
         public void setShouldLog(boolean should) {
@@ -493,6 +486,9 @@ public interface StatusBarIconController {
 
                 case TYPE_BLUETOOTH:
                     return addBluetoothIcon(index, slot, holder.getBluetoothState());
+
+                case TYPE_NETWORK_TRAFFIC:
+                    return addNetworkTraffic(index, slot);
             }
 
             return null;
@@ -592,6 +588,12 @@ public interface StatusBarIconController {
             return view;
         }
 
+        protected NetworkTrafficSB addNetworkTraffic(int index, String slot) {
+            NetworkTrafficSB view = onCreateNetworkTraffic(slot);
+            mGroup.addView(view, index, onCreateLayoutParams());
+            return view;
+        }
+
         private StatusBarIconView onCreateStatusBarIconView(String slot, boolean blocked) {
             return new StatusBarIconView(mContext, slot, null, blocked);
         }
@@ -625,6 +627,12 @@ public interface StatusBarIconController {
 
         private StatusBarBluetoothView onCreateStatusBarBluetoothView(String slot) {
             StatusBarBluetoothView view = StatusBarBluetoothView.fromContext(mContext, slot);
+            return view;
+        }
+
+        private NetworkTrafficSB onCreateNetworkTraffic(String slot) {
+            NetworkTrafficSB view = new NetworkTrafficSB(mContext);
+            view.setPadding(2, 0, 2, 0);
             return view;
         }
 
@@ -669,8 +677,10 @@ public interface StatusBarIconController {
         }
 
         public void onSetIcon(int viewIndex, StatusBarIcon icon) {
-            StatusBarIconView view = (StatusBarIconView) mGroup.getChildAt(viewIndex);
-            view.set(icon);
+            View view = mGroup.getChildAt(viewIndex);
+            if (view instanceof StatusBarIconView) {
+                ((StatusBarIconView) view).set(icon);
+            }
         }
 
         public void onSetIconHolder(int viewIndex, StatusBarIconHolder holder) {
